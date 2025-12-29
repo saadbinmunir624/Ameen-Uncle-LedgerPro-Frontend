@@ -280,33 +280,6 @@ function App() {
               </button>
             </div>
 
-            <div className="metrics-grid">
-              <MetricCard 
-                title="Current Balance" 
-                value={formatMoney(currentBalance)}
-                icon="💰"
-                color="blue"
-              />
-              <MetricCard 
-                title="Total Debit" 
-                value={formatMoney(totalDebit)}
-                icon="📉"
-                color="red"
-              />
-              <MetricCard 
-                title="Total Credit" 
-                value={formatMoney(totalCredit)}
-                icon="📈"
-                color="green"
-              />
-              <MetricCard 
-                title="Transactions" 
-                value={transactions.length.toString()}
-                icon="📊"
-                color="purple"
-              />
-            </div>
-
             <div className="table-section">
               <div className="section-header">
                 <h2>Recent Transactions</h2>
