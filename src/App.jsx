@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import './App.css';
 
 const API_BASE = 'https://ameen-uncle-ledgerpro-backend.onrender.com';
+ //const API_BASE = 'http://localhost:5000';
 
 function App() {
   const [auth, setAuth] = useState(() => {
@@ -33,6 +34,7 @@ function App() {
   });
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState(null);
 
   useEffect(() => {
     localStorage.setItem('ledger_auth', JSON.stringify(auth));
@@ -188,6 +190,59 @@ function App() {
     }
   };
 
+  const deleteTransaction = async (transactionId) => {
+    if (!confirm('Are you sure you want to delete this transaction?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/transactions/${transactionId}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Failed to delete transaction');
+      loadTransactions(selectedAccountId);
+    } catch (err) {
+      setError(err.message || 'Unable to delete transaction');
+    }
+  };
+
+  const updateTransaction = async (e) => {
+    e.preventDefault();
+    if (!editingTransaction) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/transactions/${editingTransaction._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dateOfEntry: txForm.dateOfEntry,
+          dueOn: txForm.dueOn || null,
+          reference: txForm.reference,
+          description: txForm.description,
+          debit: txForm.debit ? Number(txForm.debit) : 0,
+          credit: txForm.credit ? Number(txForm.credit) : 0,
+          remarks: txForm.remarks
+        })
+      });
+      if (!res.ok) throw new Error('Failed to update transaction');
+      await res.json();
+      setEditingTransaction(null);
+      setTxForm({ dateOfEntry: '', dueOn: '', reference: '', description: '', debit: '', credit: '', remarks: '' });
+      loadTransactions(selectedAccountId);
+    } catch (err) {
+      setError(err.message || 'Unable to update transaction');
+    }
+  };
+
+  const openEditModal = (transaction) => {
+    setEditingTransaction(transaction);
+    setTxForm({
+      dateOfEntry: transaction.dateOfEntry ? transaction.dateOfEntry.split('T')[0] : '',
+      dueOn: transaction.dueOn ? transaction.dueOn.split('T')[0] : '',
+      reference: transaction.reference || '',
+      description: transaction.description || '',
+      debit: transaction.debit || '',
+      credit: transaction.credit || '',
+      remarks: transaction.remarks || ''
+    });
+  };
+
   const selectedAccount = accounts.find((a) => a._id === selectedAccountId) || null;
   const cannotTransact = !selectedAccountId || lockedAccounts[selectedAccountId];
 
@@ -253,14 +308,18 @@ function App() {
         </div>
         <div className="navbar-right">
           <span className="user-name">Hi, {auth.username}</span>
-          <AccountDropdown
-            accounts={sortedAccounts}
-            lockedAccounts={lockedAccounts}
-            selectedId={selectedAccountId}
-            onSelect={(id) => setSelectedAccountId(id)}
-            onToggleLock={toggleLock}
-          />
-          <button className="btn btn-ghost" onClick={() => setShowAccountModal(true)}>+ New Account</button>
+          {selectedAccount && (
+            <>
+              <AccountDropdown
+                accounts={sortedAccounts}
+                lockedAccounts={lockedAccounts}
+                selectedId={selectedAccountId}
+                onSelect={(id) => setSelectedAccountId(id)}
+                onToggleLock={toggleLock}
+              />
+              <button className="btn btn-ghost" onClick={() => setShowAccountModal(true)}>+ New Account</button>
+            </>
+          )}
           <button className="btn btn-ghost" onClick={handleLogout}>Logout</button>
         </div>
       </header>
@@ -297,12 +356,13 @@ function App() {
                       <th>Due On</th>
                       <th>Remarks</th>
                       <th>Balance</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {transactions.length === 0 && (
                       <tr>
-                        <td colSpan="8" className="empty-state">No transactions yet. Add one to get started.</td>
+                        <td colSpan="9" className="empty-state">No transactions yet. Add one to get started.</td>
                       </tr>
                     )}
                     {transactions.map((t) => (
@@ -315,6 +375,10 @@ function App() {
                         <td>{t.dueOn ? formatDate(t.dueOn) : '—'}</td>
                         <td className="remarks">{t.remarks || '—'}</td>
                         <td className="num balance">{formatMoney(t.balance)}</td>
+                        <td className="actions">
+                          <button className="btn-edit" onClick={() => openEditModal(t)}>Edit</button>
+                          <button className="btn-delete" onClick={() => deleteTransaction(t._id)}>Delete</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -323,11 +387,21 @@ function App() {
             </div>
           </>
         ) : (
-          <div className="empty-dashboard">
-            <p className="empty-icon">📭</p>
-            <h2>No Account Selected</h2>
-            <p>Create a new account or select one from the dropdown to get started.</p>
-            <button className="btn btn-primary" onClick={() => setShowAccountModal(true)}>+ Create Account</button>
+          <div className="welcome-screen">
+            <div className="welcome-card">
+              <h2>Welcome to Ledger Pro</h2>
+              <p className="welcome-subtitle">Select an account to view transactions or create a new one</p>
+              <div className="welcome-actions">
+                <AccountDropdown
+                  accounts={sortedAccounts}
+                  lockedAccounts={lockedAccounts}
+                  selectedId={selectedAccountId}
+                  onSelect={(id) => setSelectedAccountId(id)}
+                  onToggleLock={toggleLock}
+                />
+                <button className="btn btn-primary btn-large" onClick={() => setShowAccountModal(true)}>+ Create New Account</button>
+              </div>
+            </div>
           </div>
         )}
       </main>
@@ -348,6 +422,85 @@ function App() {
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setShowAccountModal(false)}>Cancel</button>
               <button type="submit" className="btn btn-primary">Create Account</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {editingTransaction && (
+        <Modal title="Edit Transaction" onClose={() => {
+          setEditingTransaction(null);
+          setTxForm({ dateOfEntry: '', dueOn: '', reference: '', description: '', debit: '', credit: '', remarks: '' });
+        }}>
+          <form className="form form-grid" onSubmit={updateTransaction}>
+            <div className="form-group">
+              <label>Date of entry *</label>
+              <input
+                type="date"
+                value={txForm.dateOfEntry}
+                onChange={(e) => setTxForm((p) => ({ ...p, dateOfEntry: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Due on</label>
+              <input
+                type="date"
+                value={txForm.dueOn}
+                onChange={(e) => setTxForm((p) => ({ ...p, dueOn: e.target.value }))}
+              />
+            </div>
+            <div className="form-group">
+              <label>Reference</label>
+              <input
+                type="text"
+                value={txForm.reference}
+                onChange={(e) => setTxForm((p) => ({ ...p, reference: e.target.value }))}
+                placeholder="INV-001"
+              />
+            </div>
+            <div className="form-group">
+              <label>Description</label>
+              <input
+                type="text"
+                value={txForm.description}
+                onChange={(e) => setTxForm((p) => ({ ...p, description: e.target.value }))}
+                placeholder="Transaction details"
+              />
+            </div>
+            <div className="form-group">
+              <label>Debit</label>
+              <input
+                type="number"
+                step="0.01"
+                value={txForm.debit}
+                onChange={(e) => setTxForm((p) => ({ ...p, debit: e.target.value }))}
+              />
+            </div>
+            <div className="form-group">
+              <label>Credit</label>
+              <input
+                type="number"
+                step="0.01"
+                value={txForm.credit}
+                onChange={(e) => setTxForm((p) => ({ ...p, credit: e.target.value }))}
+              />
+            </div>
+            <div className="form-group form-full">
+              <label>Remarks</label>
+              <textarea
+                rows="3"
+                value={txForm.remarks}
+                onChange={(e) => setTxForm((p) => ({ ...p, remarks: e.target.value }))}
+                placeholder="Additional notes..."
+              />
+            </div>
+            <div className="modal-actions form-full">
+              <button type="button" className="btn btn-ghost" onClick={() => {
+                setEditingTransaction(null);
+                setTxForm({ dateOfEntry: '', dueOn: '', reference: '', description: '', debit: '', credit: '', remarks: '' });
+              }}>Cancel</button>
+              <button type="submit" className="btn btn-primary">Update Transaction</button>
             </div>
           </form>
         </Modal>
